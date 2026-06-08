@@ -1,5 +1,5 @@
 // Growth Tracker service worker — cache the app shell so it runs fully offline.
-const CACHE = 'growth-tracker-v1';
+const CACHE = 'growth-tracker-v2';
 const ASSETS = [
   './',
   './index.html',

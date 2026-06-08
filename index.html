@@ -6,7 +6,6 @@
 <title>Growth Tracker</title>
 <meta name="theme-color" content="#0e151f">
 <link rel="manifest" href="./manifest.json">
-<!-- iOS standalone support -->
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Growth">
@@ -14,21 +13,10 @@
 <link rel="icon" type="image/png" href="./icon-192.png">
 
 <script>
-// Standalone storage shim: emulate the chat host's window.storage using localStorage,
-// so the same app code runs unchanged on a real device, fully offline.
 window.storage = {
-  async get(key){
-    const v = localStorage.getItem('gt_'+key);
-    return v === null ? null : { key, value: v };
-  },
-  async set(key, value){
-    localStorage.setItem('gt_'+key, value);
-    return { key, value };
-  },
-  async delete(key){
-    localStorage.removeItem('gt_'+key);
-    return { key, deleted: true };
-  }
+  async get(key){ const v = localStorage.getItem('gt_'+key); return v === null ? null : { key, value: v }; },
+  async set(key, value){ localStorage.setItem('gt_'+key, value); return { key, value }; },
+  async delete(key){ localStorage.removeItem('gt_'+key); return { key, deleted: true }; }
 };
 </script>
 </head>
@@ -307,21 +295,22 @@ window.storage = {
 
 <script>
 const EXERCISES = [
-  {id:'hex',  name:'Hex-Bar Deadlift',   target:'3 × 8',     sets:3, unit:'kg',     rir:2},
-  {id:'bench',name:'BENCH_DYNAMIC',      target:'3 × 8–10',  sets:3, unit:'kg',     rir:2},
-  {id:'ohp',  name:'Shoulder Press',     target:'3 × 8–10',  sets:3, unit:'kg',     rir:2},
-  {id:'pull', name:'Pull-Up / Pulldown', target:'3 × 8–12',  sets:3, unit:'reps/kg',rir:1},
-  {id:'row',  name:'Chest-Supported Row',target:'3 × 10–12', sets:3, unit:'kg',     rir:1},
-  {id:'curl', name:'Leg Curl',           target:'3 × 12–15', sets:3, unit:'kg',     rir:1},
-  {id:'calf', name:'Calf Press',         target:'3 × 15',    sets:3, unit:'kg',     rir:0},
-  {id:'bicep',name:'Dumbbell Curl',      target:'2 × 10–12', sets:2, unit:'kg',     rir:0},
-  {id:'dip',  name:'Dips / Pushdown',    target:'2 × 10–12', sets:2, unit:'reps/kg',rir:0},
+  {id:'hex2',     name:'Hex-Bar Deadlift',          target:'3 × 5',     sets:3, unit:'kg', rir:2},
+  {id:'inc_db',   name:'Incline DB Bench Press',    target:'3 × 8–12',  sets:3, unit:'kg', rir:1},
+  {id:'mch_chest',name:'Seated Machine Chest Press',target:'1 + drop',  sets:2, unit:'kg', rir:0, drop:true},
+  {id:'db_sho',   name:'Seated DB Shoulder Press',  target:'3 × 8–12',  sets:3, unit:'kg', rir:1},
+  {id:'mch_sho',  name:'Machine Shoulder Press',    target:'1 + drop',  sets:2, unit:'kg', rir:0, drop:true},
+  {id:'lat',      name:'Cable Lat Pulldown',        target:'3 × 8–12',  sets:3, unit:'kg', rir:1},
+  {id:'row2',     name:'Chest-Supported Row',       target:'3 × 10–12', sets:3, unit:'kg', rir:1},
+  {id:'lcurl',    name:'Lying Cable Bicep Curl',    target:'2 × 10–12', sets:2, unit:'kg', rir:0},
+  {id:'tri',      name:'Triceps Dips / Pushdown',   target:'2 × 10–12', sets:2, unit:'reps/kg', rir:0},
 ];
 
 // RIR = reps in reserve. 2 = big lifts keep a buffer; 0 = take final set to failure (low-risk moves).
-function rirCue(rir){
-  if(rir>=2) return {txt:'Stop ~2 reps short of failure', cls:'rir-hi'};
-  if(rir===1) return {txt:'Push to ~1 rep short of failure', cls:'rir-mid'};
+function rirCue(ex){
+  if(ex.drop) return {txt:'Set 1 leave 1 in tank · drop set to failure', cls:'rir-go'};
+  if(ex.rir>=2) return {txt:'Stop ~2 reps short of failure', cls:'rir-hi'};
+  if(ex.rir===1) return {txt:'Push to ~1 rep short of failure', cls:'rir-mid'};
   return {txt:'Last set → take to failure', cls:'rir-go'};
 }
 
@@ -330,11 +319,9 @@ let history = [];         // array of saved sessions
 let current = {};         // {exId: [{w,r},...]}
 let lastByEx = {};        // {exId: {sets:[{w,r}], sessionNum, date}}
 let openEx = null;
-let progSel = 'hex';      // exercise currently shown on Progress tab
+let progSel = 'hex2';     // exercise currently shown on Progress tab
 
-function benchName(n){ return (n % 2 === 1) ? 'Flat seated bench' : 'Incline dumbbell press'; }
-function benchShort(n){ return (n % 2 === 1) ? 'Flat seated bench' : 'Incline DB press'; }
-function exName(ex){ return ex.name === 'BENCH_DYNAMIC' ? ('Bench — ' + benchShort(sessionNum)) : ex.name; }
+function exName(ex){ return ex.name; }
 
 async function load(){
   try{
@@ -359,9 +346,8 @@ async function load(){
 
 function render(){
   document.getElementById('sessTitle').textContent = 'Session ' + sessionNum;
-  const isA = sessionNum % 2 === 1;
   const bt = document.getElementById('benchTag');
-  bt.textContent = (isA?'🏋️ ':'💪 ') + benchName(sessionNum);
+  bt.textContent = '💪 Full-body · push, pull, hinge';
   renderExercises();
   renderHistory();
   renderProgress();
@@ -388,8 +374,9 @@ function renderExercises(){
     }
 
     const setRows = sets.map((s,si)=>{
+      const isDrop = ex.drop && si === sets.length-1;
       let beat = '';
-      if(last){
+      if(last && !isDrop){
         const ls = last.sets[si];
         if(ls && (s.w!==''&&s.r!=='') && (ls.w!==''&&ls.r!=='')){
           const now = (parseFloat(s.w)||0)*(parseFloat(s.r)||0);
@@ -397,8 +384,9 @@ function renderExercises(){
           beat = now>then ? '🔼' : (now===then ? '➖' : '🔽');
         }
       }
+      const label = isDrop ? 'Drop' : 'Set '+(si+1);
       return `<div class="setrow">
-        <div class="sl">Set ${si+1}</div>
+        <div class="sl">${label}</div>
         <div class="fld"><input inputmode="decimal" placeholder="wt" value="${s.w}"
           onchange="upd('${ex.id}',${si},'w',this.value)"><span class="u">${ex.unit.split('/')[0]}</span></div>
         <div class="x">×</div>
@@ -408,7 +396,7 @@ function renderExercises(){
       </div>`;
     }).join('');
 
-    const cue = rirCue(ex.rir);
+    const cue = rirCue(ex);
     const card = document.createElement('div');
     card.className = 'ex' + (done?' done':'') + (isOpen?' open':'');
     card.innerHTML = `
@@ -439,7 +427,6 @@ async function finishSession(){
   if(!anything){ toast('Log at least one set first'); return; }
   const rec = {
     sessionNum,
-    bench: benchName(sessionNum),
     date: new Date().toISOString(),
     logs: JSON.parse(JSON.stringify(current))
   };
@@ -466,19 +453,32 @@ function renderHistory(){
     const d = new Date(s.date);
     const ds = d.toLocaleDateString(undefined,{weekday:'short',day:'numeric',month:'short'}) +
                ' · ' + d.toLocaleTimeString(undefined,{hour:'2-digit',minute:'2-digit'});
-    const rows = EXERCISES.map(ex=>{
-      const sets = (s.logs[ex.id]||[]).filter(x=>x.w!==''||x.r!=='');
+    // iterate the ids actually logged in this session (handles old + new line-ups)
+    const rows = Object.keys(s.logs).map(exId=>{
+      const sets = (s.logs[exId]||[]).filter(x=>x.w!==''||x.r!=='');
       if(!sets.length) return '';
       const txt = sets.map(x=>`${x.w||'–'}×${x.r||'–'}`).join('  ');
-      const nm = ex.name==='BENCH_DYNAMIC' ? ('Bench ('+(s.sessionNum%2===1?'flat':'incline')+')') : ex.name;
+      const nm = nameFor(exId, s);
       return `<div class="hrow"><span>${nm}</span><span>${txt}</span></div>`;
     }).join('');
     return `<div class="hcard">
       <div class="hh"><b>Session ${s.sessionNum}</b><span class="d">${ds}</span></div>
-      <div class="hb">${s.bench}</div>
       ${rows}
     </div>`;
   }).join('');
+}
+
+// resolve a friendly name for an exercise id, covering both the current
+// line-up and ids from older saved sessions.
+const LEGACY_NAMES = {
+  hex:'Hex-Bar Deadlift', bench:'Bench', ohp:'Shoulder Press', pull:'Pull-Up / Pulldown',
+  row:'Chest-Supported Row', curl:'Leg Curl', calf:'Calf Press', bicep:'Dumbbell Curl', dip:'Dips / Pushdown'
+};
+function nameFor(exId, s){
+  const cur = EXERCISES.find(e=>e.id===exId);
+  if(cur) return cur.name;
+  if(exId==='bench' && s) return 'Bench ('+(s.sessionNum%2===1?'flat':'incline')+')';
+  return LEGACY_NAMES[exId] || exId;
 }
 
 // best working set per session for an exercise, as estimated 1RM (Epley): w * (1 + reps/30)
@@ -504,12 +504,12 @@ function renderProgress(){
   // picker chips
   const picker = document.getElementById('progPicker');
   picker.innerHTML = EXERCISES.map(ex=>{
-    const nm = ex.name==='BENCH_DYNAMIC' ? 'Bench' : ex.name;
+    const nm = ex.name;
     return `<div class="chip ${progSel===ex.id?'on':''}" onclick="selProg('${ex.id}')">${nm}</div>`;
   }).join('');
 
   const ex = EXERCISES.find(e=>e.id===progSel);
-  const nm = ex.name==='BENCH_DYNAMIC' ? 'Bench' : ex.name;
+  const nm = ex.name;
   const data = seriesFor(progSel);
   const host = document.getElementById('progChart');
 
@@ -609,9 +609,7 @@ load();
 
 <script>
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(()=>{});
-  });
+  window.addEventListener('load', () => { navigator.serviceWorker.register('./sw.js').catch(()=>{}); });
 }
 </script>
 
